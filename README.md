@@ -1,5 +1,6 @@
 # Pygame
 Game clones created using pygame
+
 In order of complexity (easier -> harder)
 
 1. Pang
