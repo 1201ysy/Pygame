@@ -1,5 +1,6 @@
 # Pygame
 Game clones created using pygame
+In order of complexity (easier -> harder)
 
 1. Pang
 Based off of Pang (Arcade) Game
@@ -37,4 +38,4 @@ Based off of Puzzle Bobble Game
 - Mission complete when all 3 levels complete
 - Gameover when bubbles reaches the bottom of map
 
-![Imgur](https://i.imgur.com/O0CScYQ.gif)
+![Imgur](https://i.imgur.com/f8t5VD8.gif)
