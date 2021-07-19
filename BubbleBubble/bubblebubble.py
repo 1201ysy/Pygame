@@ -6,7 +6,7 @@ import random
 
 # Bubble sprite class
 class Bubble(pygame.sprite.Sprite):
-    def __init__(self, image, color, position=(0,0), row_idx=-1, col_idx=-1):
+    def __init__(self,  color, image, animation = None, position=(0,0), row_idx=-1, col_idx=-1):
         super().__init__()
         self.image = image
         self.color = color
@@ -15,7 +15,9 @@ class Bubble(pygame.sprite.Sprite):
         self.radius = 18
         self.row_idx = row_idx
         self.col_idx = col_idx   
-    
+        self.sparkle = random.randint(0, len(sparkle_animation) -1)
+        self.animation = animation
+        self.fall_speed = fall_speed + random.randint(self.row_idx, self.row_idx + 2)
 
     def set_rect(self, position):
         self.rect = self.image.get_rect(center=position)
@@ -33,6 +35,11 @@ class Bubble(pygame.sprite.Sprite):
             screen.blit(self.image, (self.rect.x + to_x , self.rect.y))
         else:
             screen.blit(self.image, self.rect)
+    
+    def draw_remove(self, screen):
+        if animation_count % 2 == 0:
+            screen.blit(sparkle_animation[self.sparkle], self.rect)
+        screen.blit(self.animation[animation_count], self.rect)
 
     def move(self):
         to_x = self.radius * math.cos(self.rad_angle)
@@ -43,6 +50,9 @@ class Bubble(pygame.sprite.Sprite):
 
         if self.rect.left < 0 or self.rect.right > screen_width:
             self.set_angle(180 - self.angle)
+    
+    def fall(self):
+        self.rect.y += self.fall_speed
 
     def drop_downward(self, height):
         self.rect = self.image.get_rect(center= (self.rect.centerx, self.rect.centery + height))
@@ -80,11 +90,11 @@ class Pointer(pygame.sprite.Sprite):
 def setup():
     global map, level
     map = [[
-        list("...R...."),
-        list("......./"),
-        list("........"),  
-        list("......./"),
-        list("........"),
+        list(".RRRR..."),
+        list("..RRR../"),
+        list("....Y..."),  
+        list("...YY../"),
+        list("....Y..."),
         list("......./"),  
         list("........"),
         list("......./"),
@@ -138,9 +148,9 @@ def setup():
             if col in [".", "/"]:
                 continue
             position = get_bubble_position(row_idx, col_idx)
-            image = get_bubble_image(col)
+            image, animation = get_bubble_image(col)
             if image:
-                bubble_group.add(Bubble(image, col, position, row_idx, col_idx))
+                bubble_group.add(Bubble(col, image, animation,  position,  row_idx, col_idx))
 
 # Returns bubble (x,y) position of bubble given row,col index from the map list
 def get_bubble_position(row,col):
@@ -153,25 +163,29 @@ def get_bubble_position(row,col):
 # Get bubble image for the "color" if it exists
 def get_bubble_image(color):
     if color in bubble_images:
-        return bubble_images[color]
+        if "animation" in bubble_images[color]:
+            return bubble_images[color]["base"], bubble_images[color]["animation"]
+        else:
+            return  bubble_images[color]["base"], None
 
 # Prepares current and next bubbles 
-def prepare_bubbles():
+def prepare_bubbles(waiting = False):
     global curr_bubble, next_bubble
-    if next_bubble:
-        curr_bubble = next_bubble
-    else:
-        curr_bubble = create_bubble()
+    if not waiting:
+        if next_bubble:
+            curr_bubble = next_bubble
+        else:
+            curr_bubble = create_bubble()
 
-    curr_bubble.set_rect((screen_width//2, 624))
-    next_bubble = create_bubble()
-    next_bubble.set_rect((screen_width//4, 688))
+        curr_bubble.set_rect((screen_width//2, 624))
+        next_bubble = create_bubble()
+        next_bubble.set_rect((screen_width//4, 688))
 
 # Randomly create a bubble 
 def create_bubble():
     color = get_random_bubble_color()
-    image = get_bubble_image(color)
-    return Bubble(image, color)
+    image, animation = get_bubble_image(color)
+    return Bubble(color,image, animation)
 
 # Randomly create a bubble color out of colors that already exists on the map
 def get_random_bubble_color():
@@ -257,6 +271,7 @@ def remove_visited_bubbles():
     bubbles_to_remove = [ b for b in bubble_group if (b.row_idx, b.col_idx) in visited]
     for bubble in bubbles_to_remove:
         map[level][bubble.row_idx][bubble.col_idx] = "."
+        removing_bubble_group.add(bubble)
         bubble_group.remove(bubble)
 
 # Remove all bubbles not in the visited list
@@ -264,6 +279,7 @@ def remove_not_visited_bubbles():
     bubbles_to_remove = [ b for b in bubble_group if (b.row_idx, b.col_idx) not in visited]
     for bubble in bubbles_to_remove:
         map[level][bubble.row_idx][bubble.col_idx] = "."
+        falling_bubble_group.add(bubble)
         bubble_group.remove(bubble)
  
 # Remove hanging bubbles
@@ -273,6 +289,29 @@ def remove_hanging_bubbles():
         if map[level][0][col_idx] != ".":
             visit(0, col_idx)
     remove_not_visited_bubbles()
+
+# Draws animation for falling bubbles after it has been removed from bubble_group
+def draw_falling_bubbles():
+    for bubble in falling_bubble_group:
+        bubble.fall()
+        bubble.draw(screen)
+        if bubble.rect.top > screen_height:
+            falling_bubble_group.remove(bubble)
+
+# Draws animation for removing bubbles (when 3+ bubbles of the same bubble connects) after it has been removed from bubble_group
+def draw_removing_bubbles():
+    global frame_count, animation_count
+    frame_count +=1
+    if frame_count !=0 and frame_count % 5 == 0:
+        animation_count += 1
+        if animation_count > NUM_ANIMATION_FRAMES - 1:
+            animation_count = 0
+            removing_bubble_group.empty()
+            frame_count = 0
+
+    for bubble in removing_bubble_group:
+        bubble.draw_remove(screen)
+
 
 # Draws bubble sprite group 
 def draw_bubbles():
@@ -292,6 +331,10 @@ def drop_wall():
     wall_height += CELL_SIZE
     for bubble in bubble_group:
         bubble.drop_downward((CELL_SIZE))
+    for bubble in removing_bubble_group :
+        bubble.drop_downward((CELL_SIZE))
+    for bubble in falling_bubble_group :
+        bubble.drop_downward((CELL_SIZE))
     curr_fire_count = FIRE_COUNT
 
 # returns the lowest bottom y bubble position of the bubble group
@@ -302,7 +345,7 @@ def get_lowest_bubble_bottom():
 # change all the bubble color to black
 def change_bubble_color():
     for bubble in bubble_group:
-        bubble.image = bubble_images["BL"]
+        bubble.image = bubble_images["BL"]["base"]
 
 def display_next_level():
     msg_line1 = game_font.render(f"STARTING", True, WHITE)
@@ -347,33 +390,92 @@ BUBBLE_WIDTH = 56
 BUBBLE_HEIGHT = 62
 MAP_ROW_COUNT = 11
 MAP_COL_COUNT = 8
+NUM_ANIMATION_FRAMES = 4
 FIRE_COUNT = 7
 BLACK = (0,0,0)
 WHITE = (255,255,255)
+
 
 # Movements
 to_angle_left = 0
 to_angle_right = 0
 angle_speed = 1.5/60
+fall_speed = 15
 
 
 # Images 
 background = pygame.image.load(os.path.join(image_path, "background.png"))
 wall = pygame.image.load(os.path.join(image_path, "wall.png"))
 pointer_image = pygame.image.load(os.path.join(image_path, "pointer.png"))
+
 bubble_images = {
-    "R" : pygame.image.load(os.path.join(image_path, "red.png")).convert_alpha(),
-    "Y": pygame.image.load(os.path.join(image_path, "yellow.png")).convert_alpha(),
-    "B": pygame.image.load(os.path.join(image_path, "blue.png")).convert_alpha(),
-    "G": pygame.image.load(os.path.join(image_path, "green.png")).convert_alpha(),
-    "P": pygame.image.load(os.path.join(image_path, "purple.png")).convert_alpha(),
-    "BL": pygame.image.load(os.path.join(image_path, "black.png")).convert_alpha(),
+    "R" : {
+        "base":pygame.image.load(os.path.join(image_path, "red.png")).convert_alpha(),
+        "animation": [
+            pygame.image.load(os.path.join(image_path, "red_1.png")).convert_alpha(),
+            pygame.image.load(os.path.join(image_path, "red_2.png")).convert_alpha(),
+            pygame.image.load(os.path.join(image_path, "red_3.png")).convert_alpha(),
+            pygame.image.load(os.path.join(image_path, "red_4.png")).convert_alpha(),
+        ]
+    }, 
+    "Y" : {
+        "base":pygame.image.load(os.path.join(image_path, "yellow.png")).convert_alpha(),
+        "animation": [
+            pygame.image.load(os.path.join(image_path, "yellow_1.png")).convert_alpha(),
+            pygame.image.load(os.path.join(image_path, "yellow_2.png")).convert_alpha(),
+            pygame.image.load(os.path.join(image_path, "yellow_3.png")).convert_alpha(),
+            pygame.image.load(os.path.join(image_path, "yellow_4.png")).convert_alpha(),
+        ]
+    }, 
+
+    "B" : {
+        "base":pygame.image.load(os.path.join(image_path, "blue.png")).convert_alpha(),
+        "animation": [
+            pygame.image.load(os.path.join(image_path, "blue_1.png")).convert_alpha(),
+            pygame.image.load(os.path.join(image_path, "blue_2.png")).convert_alpha(),
+            pygame.image.load(os.path.join(image_path, "blue_3.png")).convert_alpha(),
+            pygame.image.load(os.path.join(image_path, "blue_4.png")).convert_alpha(),
+        ]
+    }, 
+    "G" : {
+        "base":pygame.image.load(os.path.join(image_path, "green.png")).convert_alpha(),
+        "animation": [
+            pygame.image.load(os.path.join(image_path, "green_1.png")).convert_alpha(),
+            pygame.image.load(os.path.join(image_path, "green_2.png")).convert_alpha(),
+            pygame.image.load(os.path.join(image_path, "green_3.png")).convert_alpha(),
+            pygame.image.load(os.path.join(image_path, "green_4.png")).convert_alpha(),
+        ]
+    }, 
+    "P" : {
+        "base":pygame.image.load(os.path.join(image_path, "purple.png")).convert_alpha(),
+        "animation": [
+            pygame.image.load(os.path.join(image_path, "purple_1.png")).convert_alpha(),
+            pygame.image.load(os.path.join(image_path, "purple_2.png")).convert_alpha(),
+            pygame.image.load(os.path.join(image_path, "purple_3.png")).convert_alpha(),
+            pygame.image.load(os.path.join(image_path, "purple_4.png")).convert_alpha(),
+        ]
+    }, 
+
+    "BL" : {
+        "base":pygame.image.load(os.path.join(image_path, "black.png")).convert_alpha(),
+    }, 
 }
+
+sparkle_animation = [
+
+pygame.image.load(os.path.join(image_path, "sparkle1.png")).convert_alpha(),
+pygame.image.load(os.path.join(image_path, "sparkle2.png")).convert_alpha(),
+pygame.image.load(os.path.join(image_path, "sparkle3.png")).convert_alpha(),
+
+]
+
 
 # Game asset variables
 map = []
 visited = []
 bubble_group = pygame.sprite.Group()
+falling_bubble_group = pygame.sprite.Group()
+removing_bubble_group = pygame.sprite.Group()
 pointer = Pointer(pointer_image, (screen_width//2, 624), 90)
 
 # Game state variables
@@ -385,12 +487,14 @@ curr_fire_count = FIRE_COUNT
 wall_height = 0
 is_game_over = False
 game_result = None
-
-
+waiting = False
+animation_count = 0
+frame_count = 0
 
 ## Start game loop
 
 setup()
+
 
 running = True
 while running:
@@ -419,9 +523,8 @@ while running:
 
 
     # Drawing
-
     if not curr_bubble:
-        prepare_bubbles()
+        prepare_bubbles(waiting)
 
     if fire:
         process_collision()
@@ -429,19 +532,35 @@ while running:
     if curr_fire_count == 0:
         drop_wall()
     
+
+    screen.blit(background, (0,0))
+    screen.blit(wall, (0, wall_height - screen_height))
+    draw_bubbles()
+
+    if removing_bubble_group:
+        draw_removing_bubbles()
+
+    if falling_bubble_group:
+        draw_falling_bubbles()
+
+    pointer.rotate(to_angle_right + to_angle_left )
+    pointer.draw(screen)
+
     # check if current level is cleared
     if not bubble_group:
         # if final level was complete, end game
+        waiting = True
         if level == 3:
             game_result = "Mission Complete"
             is_game_over = True
         # if not on final level, move on to next level
-        else:
+        elif not (falling_bubble_group or removing_bubble_group):
             level += 1
             wall_height = 0
             curr_fire_count = FIRE_COUNT
             curr_bubble = None
             next_bubble = None
+            waiting = False
             setup()
             display_next_level()
             pygame.display.update()
@@ -456,13 +575,8 @@ while running:
         game_result = "Game Over"
         is_game_over = True
         change_bubble_color()
+        draw_bubbles()
 
-    screen.blit(background, (0,0))
-    screen.blit(wall, (0, wall_height - screen_height))
-    draw_bubbles()
-
-    pointer.rotate(to_angle_right + to_angle_left )
-    pointer.draw(screen)
     if curr_bubble:
         if fire:
             curr_bubble.move()
@@ -470,6 +584,7 @@ while running:
 
     if next_bubble:
         next_bubble.draw(screen)
+
 
     if is_game_over:
         display_game_over()

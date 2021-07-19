@@ -237,6 +237,6 @@ while running:
 msg = game_font.render(game_result , True, (255,255,255))
 msg_rect = msg.get_rect(center = (int(screen_width/2), int(screen_height/2)))
 screen.blit(msg, msg_rect)
-pygame.display.update()   
+pygame.display.update()    
 pygame.time.delay(2000)
 pygame.quit()
